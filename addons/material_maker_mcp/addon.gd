@@ -110,7 +110,10 @@ func _ready() -> void:
 
 	# Godot 4: listen() returns an Error enum.
 	# Godot 3: listen() also returns an Error but the class is TCP_Server.
-	var err: Error = _server.listen(_port, "127.0.0.1")
+	# Bind to 0.0.0.0 so WSL2 and other local interfaces can connect.
+	# The server is intended for local use only — firewall rules should
+	# block external access if needed.
+	var err: Error = _server.listen(_port, "0.0.0.0")
 	if err != OK:
 		push_error("[MCP] Failed to start TCP server on port %d (Error %d)" % [_port, err])
 		print("[MCP] ERROR: Could not bind to port %d — is another instance running?" % _port)
