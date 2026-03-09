@@ -66,13 +66,27 @@ func _ready() -> void:
 		_port = env_port.to_int()
 
 	# Initialize command handler modules.
-	# mm_globals is an autoload that holds a reference to the real MainWindow.
-	# We must wait a frame for autoloads and the main scene to be ready.
-	await get_tree().process_frame
-	var main_window = get_node("/root/mm_globals").main_window
-	if main_window == null:
-		push_error("[MCP] Could not find Material Maker main window. MCP server will not start.")
+	# mm_globals is an autoload that holds a reference to the real MainWindow,
+	# but the main window isn't loaded immediately — parse_args.gd loads it via
+	# change_scene_to_packed() after processing command-line args. We poll until
+	# main_window is set (up to ~10 seconds).
+	var main_window = null
+	var globals = get_node_or_null("/root/mm_globals")
+	if globals == null:
+		push_error("[MCP] Could not find mm_globals autoload. MCP server will not start.")
 		return
+
+	for i in range(600):  # 600 frames ≈ 10 seconds at 60fps
+		await get_tree().process_frame
+		main_window = globals.main_window
+		if main_window != null:
+			break
+
+	if main_window == null:
+		push_error("[MCP] Timed out waiting for Material Maker main window. MCP server will not start.")
+		return
+
+	print("[MCP] Main window found, initializing command handlers...")
 
 	_scene_commands = preload("res://addons/material_maker_mcp/commands/scene.gd").new()
 	_scene_commands.init(main_window)
@@ -223,7 +237,9 @@ func _process_buffer(peer: StreamPeerTCP, client_state: Dictionary) -> void:
 			send_response(peer, "error", {"message": "Expected a JSON object, got %s" % type_string(typeof(command))})
 			continue
 
-		# Dispatch the command.
+		# Dispatch the command. _handle_command is a coroutine (uses await
+		# internally) but we call it without await intentionally — this is
+		# fire-and-forget so the buffer loop isn't blocked by async handlers.
 		_handle_command(peer, command as Dictionary)
 
 
@@ -244,51 +260,53 @@ func _handle_command(peer: StreamPeerTCP, command: Dictionary) -> void:
 
 	var cmd_type: String = command.get("type", "")
 	var params: Dictionary = command.get("params", {})
+	# Echo back request_id if the client supplied one, to correlate async responses.
+	var request_id = command.get("request_id", null)
 
 	# ----- Scene / Project commands -----
 	match cmd_type:
 		"get_scene_info":
-			_dispatch(peer, _scene_commands.get_scene_info(params))
+			_dispatch(peer, _scene_commands.get_scene_info(params), request_id)
 		"save_project":
-			_dispatch(peer, _scene_commands.save_project(params))
+			_dispatch(peer, _scene_commands.save_project(params), request_id)
 		"load_project":
-			await _dispatch_async(peer, _scene_commands.load_project(params))
+			await _dispatch_async(peer, _scene_commands.load_project(params), request_id)
 		"new_project":
-			await _dispatch_async(peer, _scene_commands.new_project(params))
+			await _dispatch_async(peer, _scene_commands.new_project(params), request_id)
 
 		# ----- Graph / Node commands -----
 		"create_node":
-			await _dispatch_async(peer, _graph_commands.create_node(params))
+			await _dispatch_async(peer, _graph_commands.create_node(params), request_id)
 		"delete_node":
-			_dispatch(peer, _graph_commands.delete_node(params))
+			_dispatch(peer, _graph_commands.delete_node(params), request_id)
 		"connect_nodes":
-			_dispatch(peer, _graph_commands.connect_nodes(params))
+			_dispatch(peer, _graph_commands.connect_nodes(params), request_id)
 		"disconnect_nodes":
-			_dispatch(peer, _graph_commands.disconnect_nodes(params))
+			_dispatch(peer, _graph_commands.disconnect_nodes(params), request_id)
 		"get_graph_info":
-			_dispatch(peer, _graph_commands.get_graph_info(params))
+			_dispatch(peer, _graph_commands.get_graph_info(params), request_id)
 		"list_available_nodes":
-			_dispatch(peer, _graph_commands.list_available_nodes(params))
+			_dispatch(peer, _graph_commands.list_available_nodes(params), request_id)
 
 		# ----- Parameter commands -----
 		"get_node_parameters":
-			_dispatch(peer, _parameter_commands.get_node_parameters(params))
+			_dispatch(peer, _parameter_commands.get_node_parameters(params), request_id)
 		"set_node_parameter":
-			_dispatch(peer, _parameter_commands.set_node_parameter(params))
+			_dispatch(peer, _parameter_commands.set_node_parameter(params), request_id)
 		"set_multiple_parameters":
-			_dispatch(peer, _parameter_commands.set_multiple_parameters(params))
+			_dispatch(peer, _parameter_commands.set_multiple_parameters(params), request_id)
 
 		# ----- Export commands -----
 		"export_material":
-			await _dispatch_async(peer, _export_commands.export_material(params))
+			await _dispatch_async(peer, _export_commands.export_material(params), request_id)
 		"export_for_engine":
-			await _dispatch_async(peer, _export_commands.export_for_engine(params))
+			await _dispatch_async(peer, _export_commands.export_for_engine(params), request_id)
 		"list_export_profiles":
-			_dispatch(peer, _export_commands.list_export_profiles(params))
+			_dispatch(peer, _export_commands.list_export_profiles(params), request_id)
 
 		# ----- Utility / escape hatch -----
 		"execute_mm_script":
-			_dispatch(peer, _utils_commands.execute_mm_script(params))
+			_dispatch(peer, _utils_commands.execute_mm_script(params), request_id)
 
 		# ----- Ping / health check -----
 		"ping":
@@ -296,7 +314,7 @@ func _handle_command(peer: StreamPeerTCP, command: Dictionary) -> void:
 				"pong": true,
 				"protocol_version": PROTOCOL_VERSION,
 				"port": _port,
-			})
+			}, request_id)
 
 		# ----- Unknown command -----
 		_:
@@ -311,7 +329,7 @@ func _handle_command(peer: StreamPeerTCP, command: Dictionary) -> void:
 					"export_material", "export_for_engine", "list_export_profiles",
 					"execute_mm_script",
 				],
-			})
+			}, request_id)
 
 
 # ---------------------------------------------------------------------------
@@ -320,18 +338,20 @@ func _handle_command(peer: StreamPeerTCP, command: Dictionary) -> void:
 
 ## Takes the Dictionary returned by a command handler and sends the appropriate
 ## response. If the result contains an "error" key, it's sent as an error.
-func _dispatch(peer: StreamPeerTCP, result: Dictionary) -> void:
+func _dispatch(peer: StreamPeerTCP, result: Dictionary, request_id = null) -> void:
 	if result.has("error") and result["error"] == true:
-		send_response(peer, "error", {"message": result.get("message", "Unknown error")})
+		send_response(peer, "error", {"message": result.get("message", "Unknown error")}, request_id)
 	else:
-		send_response(peer, "ok", result)
+		send_response(peer, "ok", result, request_id)
 
 
-## Async version of _dispatch — awaits the handler result before sending.
-## Used for MM APIs that require await (create_node, load_project, export, etc.).
-func _dispatch_async(peer: StreamPeerTCP, result) -> void:
+## Async version of _dispatch — awaits the handler coroutine result before
+## sending. Used for MM APIs that require await (create_node, load_project,
+## export, etc.). The `result` parameter is untyped because GDScript coroutines
+## don't have a specific type — it's the return value of an async func call.
+func _dispatch_async(peer: StreamPeerTCP, result, request_id = null) -> void:
 	var resolved: Dictionary = await result
-	_dispatch(peer, resolved)
+	_dispatch(peer, resolved, request_id)
 
 
 # ---------------------------------------------------------------------------
@@ -341,10 +361,14 @@ func _dispatch_async(peer: StreamPeerTCP, result) -> void:
 ## Serialise a response dictionary and send it to the peer as a single
 ## newline-terminated JSON line. This is the only function that writes to the
 ## socket — all command handlers call this.
-func send_response(peer: StreamPeerTCP, status: String, data: Dictionary) -> void:
+func send_response(peer: StreamPeerTCP, status: String, data: Dictionary, request_id = null) -> void:
 	var response: Dictionary = {
 		"status": status,
 	}
+
+	# Echo back the request_id so clients can correlate async responses.
+	if request_id != null:
+		response["request_id"] = request_id
 
 	# Merge data into the response. For "ok" responses the payload goes under
 	# "result"; for "error" responses the message is top-level.

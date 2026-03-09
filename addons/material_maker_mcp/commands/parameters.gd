@@ -30,6 +30,16 @@ func _get_graph():
 	return graph_edit.generator
 
 
+## Validate that a node_id is a plain name with no path separators.
+## Prevents NodePath injection (e.g. "../../mm_globals").
+func _validate_node_id(node_id: String) -> String:
+	if node_id.is_empty():
+		return "node_id must not be empty."
+	if "/" in node_id or "\\" in node_id or ".." in node_id:
+		return "node_id must be a plain name (no '/', '\\', or '..' allowed)."
+	return ""
+
+
 ## Finds a generator node (MMGenBase subclass) by its node ID within the
 ## current graph. Generator children are direct children of MMGenGraph.
 func _find_node(node_id: String):
@@ -49,6 +59,9 @@ func get_node_parameters(params: Dictionary) -> Dictionary:
 		return _error("Missing required parameter: 'node_id'.")
 
 	var node_id: String = str(params["node_id"])
+	var id_err: String = _validate_node_id(node_id)
+	if not id_err.is_empty():
+		return _error(id_err)
 
 	var node = _find_node(node_id)
 	if node == null:
@@ -108,6 +121,9 @@ func set_node_parameter(params: Dictionary) -> Dictionary:
 		return _error("Missing required parameter: 'value'.")
 
 	var node_id: String = str(params["node_id"])
+	var id_err: String = _validate_node_id(node_id)
+	if not id_err.is_empty():
+		return _error(id_err)
 	var parameter: String = str(params["parameter"])
 	var new_value = params["value"]
 
@@ -156,6 +172,10 @@ func set_multiple_parameters(params: Dictionary) -> Dictionary:
 			continue
 
 		var node_id: String = str(entry["node_id"])
+		var id_err: String = _validate_node_id(node_id)
+		if not id_err.is_empty():
+			results.append({"index": i, "error": true, "message": id_err})
+			continue
 		var parameter: String = str(entry["parameter"])
 		var new_value = entry["value"]
 

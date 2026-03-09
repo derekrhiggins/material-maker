@@ -43,6 +43,16 @@ func _error(message: String) -> Dictionary:
 	return {"error": true, "message": message}
 
 
+## Validate that a node_id is a plain name with no path separators.
+## Prevents NodePath injection (e.g. "../../mm_globals").
+func _validate_node_id(node_id: String) -> String:
+	if node_id.is_empty():
+		return "node_id must not be empty."
+	if "/" in node_id or "\\" in node_id or ".." in node_id:
+		return "node_id must be a plain name (no '/', '\\', or '..' allowed)."
+	return ""
+
+
 # ---------------------------------------------------------------------------
 # Command: create_node
 # ---------------------------------------------------------------------------
@@ -99,8 +109,9 @@ func create_node(params: Dictionary):
 ## Returns: { deleted: true, node_id }
 func delete_node(params: Dictionary) -> Dictionary:
 	var node_id: String = params.get("node_id", "")
-	if node_id.is_empty():
-		return _error("Missing required parameter: node_id")
+	var id_err: String = _validate_node_id(node_id)
+	if not id_err.is_empty():
+		return _error(id_err)
 
 	var graph = _get_graph()
 	if graph == null:
@@ -136,8 +147,12 @@ func delete_node(params: Dictionary) -> Dictionary:
 func connect_nodes(params: Dictionary) -> Dictionary:
 	var from_node_id: String = params.get("from_node_id", "")
 	var to_node_id: String = params.get("to_node_id", "")
-	if from_node_id.is_empty() or to_node_id.is_empty():
-		return _error("Missing required parameters: from_node_id and to_node_id")
+	var from_err: String = _validate_node_id(from_node_id)
+	if not from_err.is_empty():
+		return _error("from_node_id: " + from_err)
+	var to_err: String = _validate_node_id(to_node_id)
+	if not to_err.is_empty():
+		return _error("to_node_id: " + to_err)
 
 	var from_port: int = int(params.get("from_port", 0))
 	var to_port: int = int(params.get("to_port", 0))
@@ -192,8 +207,12 @@ func connect_nodes(params: Dictionary) -> Dictionary:
 func disconnect_nodes(params: Dictionary) -> Dictionary:
 	var from_node_id: String = params.get("from_node_id", "")
 	var to_node_id: String = params.get("to_node_id", "")
-	if from_node_id.is_empty() or to_node_id.is_empty():
-		return _error("Missing required parameters: from_node_id and to_node_id")
+	var from_err: String = _validate_node_id(from_node_id)
+	if not from_err.is_empty():
+		return _error("from_node_id: " + from_err)
+	var to_err: String = _validate_node_id(to_node_id)
+	if not to_err.is_empty():
+		return _error("to_node_id: " + to_err)
 
 	var from_port: int = int(params.get("from_port", 0))
 	var to_port: int = int(params.get("to_port", 0))
@@ -305,8 +324,8 @@ func list_available_nodes(params: Dictionary) -> Dictionary:
 			return {"node_types": filtered}
 		return {"node_types": generator_list}
 
-	# Fallback: use NodeLibraryManager for categorized results.
-	var node_library_manager = _main_window.get_node_or_null("NodeLibraryManager")
+	# Fallback: use NodeLibraryManager (a child of MainWindow: $NodeLibraryManager).
+	var node_library_manager = _main_window.node_library_manager if "node_library_manager" in _main_window else _main_window.get_node_or_null("NodeLibraryManager")
 	if node_library_manager == null:
 		return _error("Cannot access node library. Neither mm_loader nor NodeLibraryManager found.")
 

@@ -82,10 +82,19 @@ func _get_material_node():
 	return graph_edit.get_material_node()
 
 
-## Convert pixel resolution to MM's power-of-two exponent.
+## Maximum allowed resolution to prevent out-of-memory crashes.
+const MAX_RESOLUTION: int = 8192
+
+## Convert pixel resolution to MM's power-of-two exponent using bit counting.
 ## e.g. 1024 -> 10, 2048 -> 11, 4096 -> 12
+## Uses integer arithmetic to avoid floating-point precision issues with log().
 func _resolution_to_exponent(resolution: int) -> int:
-	return int(log(float(resolution)) / log(2.0))
+	var exponent: int = 0
+	var v: int = resolution
+	while v > 1:
+		v >>= 1
+		exponent += 1
+	return exponent
 
 
 ## Ensure a directory exists, creating it recursively if needed.
@@ -112,6 +121,17 @@ func _save_image(image: Image, file_path: String, format: String) -> Error:
 func _error(message: String) -> Dictionary:
 	return { "error": true, "message": message }
 
+
+## Validate that a file path is safe. Rejects path traversal and system dirs.
+func _validate_path(path: String) -> String:
+	if ".." in path:
+		return "Path contains '..' traversal and is not allowed."
+	var normalized: String = path.replace("\\", "/").to_lower()
+	for prefix in ["/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev"]:
+		if normalized.begins_with(prefix):
+			return "Path targets a restricted system directory."
+	return ""
+
 # ---------------------------------------------------------------------------
 # export_material
 # ---------------------------------------------------------------------------
@@ -132,6 +152,11 @@ func export_material(params: Dictionary):
 		return _error("Missing required parameter: output_path")
 	var output_path: String = str(params["output_path"]).strip_edges()
 
+	# Validate path to prevent path traversal attacks.
+	var path_err: String = _validate_path(output_path)
+	if not path_err.is_empty():
+		return _error(path_err)
+
 	# Validate format
 	var format: String = str(params.get("format", "png")).strip_edges().to_lower()
 	if not SUPPORTED_FORMATS.has(format):
@@ -141,6 +166,8 @@ func export_material(params: Dictionary):
 	var resolution: int = int(params.get("resolution", 1024))
 	if resolution <= 0 or (resolution & (resolution - 1)) != 0:
 		return _error("Invalid resolution %d. Must be a positive power of two." % resolution)
+	if resolution > MAX_RESOLUTION:
+		return _error("Resolution %d exceeds maximum of %d." % [resolution, MAX_RESOLUTION])
 
 	# Determine which maps to export
 	var maps: Array = []
@@ -215,6 +242,11 @@ func export_for_engine(params: Dictionary):
 		return _error("Missing required parameter: output_path")
 	var output_path: String = str(params["output_path"]).strip_edges()
 
+	# Validate path to prevent path traversal attacks.
+	var path_err: String = _validate_path(output_path)
+	if not path_err.is_empty():
+		return _error(path_err)
+
 	# Validate engine
 	if not params.has("engine") or str(params["engine"]).strip_edges().is_empty():
 		return _error("Missing required parameter: engine")
@@ -227,6 +259,8 @@ func export_for_engine(params: Dictionary):
 	var resolution: int = int(params.get("resolution", 1024))
 	if resolution <= 0 or (resolution & (resolution - 1)) != 0:
 		return _error("Invalid resolution %d. Must be a positive power of two." % resolution)
+	if resolution > MAX_RESOLUTION:
+		return _error("Resolution %d exceeds maximum of %d." % [resolution, MAX_RESOLUTION])
 	var size_exponent: int = _resolution_to_exponent(resolution)
 
 	# Ensure output directory exists

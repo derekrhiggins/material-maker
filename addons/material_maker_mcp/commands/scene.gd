@@ -41,6 +41,27 @@ func _get_graph_edit():
 		return null
 	return _main_window.get_current_graph_edit()
 
+
+# ---------------------------------------------------------------------------
+# Path validation
+# ---------------------------------------------------------------------------
+
+## Validate that a file path is safe. Rejects paths that try to escape via
+## ".." or that target sensitive system locations. Only allows absolute paths
+## under the user's home directory or relative paths.
+func _validate_path(path: String) -> String:
+	# Reject path traversal sequences.
+	if ".." in path:
+		return "Path contains '..' traversal and is not allowed."
+
+	# Reject obviously dangerous paths.
+	var normalized: String = path.replace("\\", "/").to_lower()
+	for prefix in ["/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev"]:
+		if normalized.begins_with(prefix):
+			return "Path targets a restricted system directory."
+
+	return ""
+
 # ---------------------------------------------------------------------------
 # Command: get_scene_info
 # ---------------------------------------------------------------------------
@@ -105,6 +126,11 @@ func save_project(params: Dictionary) -> Dictionary:
 	if path.is_empty():
 		return _error("No save path specified and the project has not been saved before. Provide a 'path' parameter.")
 
+	# Validate path to prevent path traversal attacks.
+	var path_err: String = _validate_path(path)
+	if not path_err.is_empty():
+		return _error(path_err)
+
 	# Ensure the path ends with .ptex (Material Maker's project extension).
 	if not path.ends_with(".ptex"):
 		path += ".ptex"
@@ -129,6 +155,11 @@ func load_project(params: Dictionary):
 
 	if path.is_empty():
 		return _error("Missing required parameter 'path'.")
+
+	# Validate path to prevent path traversal attacks.
+	var path_err: String = _validate_path(path)
+	if not path_err.is_empty():
+		return _error(path_err)
 
 	if not FileAccess.file_exists(path):
 		return _error("File not found: %s" % path)

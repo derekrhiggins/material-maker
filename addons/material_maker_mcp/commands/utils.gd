@@ -10,7 +10,6 @@
 ##
 ## Written for Godot 4.x.
 
-class_name UtilsCommands
 extends RefCounted
 
 # ---------------------------------------------------------------------------
@@ -18,7 +17,7 @@ extends RefCounted
 # ---------------------------------------------------------------------------
 
 ## The error message returned when script execution is disabled.
-const DISABLED_MESSAGE: String = "execute_mm_script is disabled. Enable it in the MCP plugin configuration."
+const DISABLED_MESSAGE: String = "execute_mm_script is disabled. Set the MM_MCP_ALLOW_SCRIPT=1 environment variable to enable it."
 
 ## Maximum allowed script length in characters, as a basic safety measure.
 const MAX_SCRIPT_LENGTH: int = 50000
@@ -31,27 +30,21 @@ const MAX_SCRIPT_LENGTH: int = 50000
 var _main_window = null
 
 ## Whether execute_mm_script is enabled. Defaults to false (disabled).
-## Must be explicitly set to true via configuration to allow script execution.
-var script_execution_enabled: bool = false
+## Controlled via the MM_MCP_ALLOW_SCRIPT environment variable.
+var _script_execution_enabled: bool = false
 
 # ---------------------------------------------------------------------------
 # Initialisation
 # ---------------------------------------------------------------------------
 
 ## Called once after construction. Receives the MM main window so scripts
-## can access the full application context.
+## can access the full application context. Reads MM_MCP_ALLOW_SCRIPT env var.
 func init(main_window) -> void:
 	_main_window = main_window
-
-
-## Enable or disable script execution. Called by the plugin based on its
-## configuration (e.g. from an environment variable or config file).
-func set_script_execution_enabled(enabled: bool) -> void:
-	script_execution_enabled = enabled
-	if enabled:
-		push_warning("[MCP Utils] execute_mm_script has been ENABLED. This allows arbitrary code execution.")
-	else:
-		print("[MCP Utils] execute_mm_script is disabled.")
+	var env_val: String = OS.get_environment("MM_MCP_ALLOW_SCRIPT").strip_edges().to_lower()
+	if env_val in ["1", "true", "yes"]:
+		_script_execution_enabled = true
+		push_warning("[MCP Utils] execute_mm_script has been ENABLED via MM_MCP_ALLOW_SCRIPT. This allows arbitrary code execution.")
 
 # ---------------------------------------------------------------------------
 # execute_mm_script
@@ -76,7 +69,7 @@ func execute_mm_script(params: Dictionary) -> Dictionary:
 	# ------------------------------------------------------------------
 	# Gate: check if script execution is enabled
 	# ------------------------------------------------------------------
-	if not script_execution_enabled:
+	if not _script_execution_enabled:
 		return _error(DISABLED_MESSAGE)
 
 	# ------------------------------------------------------------------
