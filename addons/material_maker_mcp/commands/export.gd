@@ -11,6 +11,8 @@
 
 extends RefCounted
 
+const Validation = preload("res://addons/material_maker_mcp/commands/validation.gd")
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -122,15 +124,6 @@ func _error(message: String) -> Dictionary:
 	return { "error": true, "message": message }
 
 
-## Validate that a file path is safe. Rejects path traversal and system dirs.
-func _validate_path(path: String) -> String:
-	if ".." in path:
-		return "Path contains '..' traversal and is not allowed."
-	var normalized: String = path.replace("\\", "/").to_lower()
-	for prefix in ["/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev"]:
-		if normalized.begins_with(prefix):
-			return "Path targets a restricted system directory."
-	return ""
 
 # ---------------------------------------------------------------------------
 # export_material
@@ -153,7 +146,7 @@ func export_material(params: Dictionary):
 	var output_path: String = str(params["output_path"]).strip_edges()
 
 	# Validate path to prevent path traversal attacks.
-	var path_err: String = _validate_path(output_path)
+	var path_err: String = Validation.validate_path(output_path)
 	if not path_err.is_empty():
 		return _error(path_err)
 
@@ -243,7 +236,7 @@ func export_for_engine(params: Dictionary):
 	var output_path: String = str(params["output_path"]).strip_edges()
 
 	# Validate path to prevent path traversal attacks.
-	var path_err: String = _validate_path(output_path)
+	var path_err: String = Validation.validate_path(output_path)
 	if not path_err.is_empty():
 		return _error(path_err)
 

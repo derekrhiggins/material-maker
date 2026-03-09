@@ -47,6 +47,13 @@ var _clients: Dictionary = {}
 ## The port the server is actually listening on (after startup).
 var _port: int = DEFAULT_PORT
 
+## TCP poll interval in seconds. Avoids running the accept/read loop every
+## rendered frame, reducing overhead during render-intensive operations.
+const TCP_POLL_INTERVAL: float = 0.05  # 50ms ≈ 20 polls/sec
+
+## Accumulates delta time between TCP polls.
+var _poll_timer: float = 0.0
+
 ## Command handler modules — instantiated in _ready().
 var _scene_commands: RefCounted = null
 var _graph_commands: RefCounted = null
@@ -131,9 +138,15 @@ func _exit_tree() -> void:
 # Main loop — runs every frame
 # ---------------------------------------------------------------------------
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if _server == null:
 		return
+
+	# Throttle TCP polling to avoid per-frame overhead.
+	_poll_timer += delta
+	if _poll_timer < TCP_POLL_INTERVAL:
+		return
+	_poll_timer = 0.0
 
 	# ------------------------------------------------------------------
 	# Accept new connections

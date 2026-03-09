@@ -12,6 +12,8 @@
 
 extends RefCounted
 
+const Validation = preload("res://addons/material_maker_mcp/commands/validation.gd")
+
 var _main_window = null
 
 
@@ -43,14 +45,6 @@ func _error(message: String) -> Dictionary:
 	return {"error": true, "message": message}
 
 
-## Validate that a node_id is a plain name with no path separators.
-## Prevents NodePath injection (e.g. "../../mm_globals").
-func _validate_node_id(node_id: String) -> String:
-	if node_id.is_empty():
-		return "node_id must not be empty."
-	if "/" in node_id or "\\" in node_id or ".." in node_id:
-		return "node_id must be a plain name (no '/', '\\', or '..' allowed)."
-	return ""
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +103,7 @@ func create_node(params: Dictionary):
 ## Returns: { deleted: true, node_id }
 func delete_node(params: Dictionary) -> Dictionary:
 	var node_id: String = params.get("node_id", "")
-	var id_err: String = _validate_node_id(node_id)
+	var id_err: String = Validation.validate_node_id(node_id)
 	if not id_err.is_empty():
 		return _error(id_err)
 
@@ -147,10 +141,10 @@ func delete_node(params: Dictionary) -> Dictionary:
 func connect_nodes(params: Dictionary) -> Dictionary:
 	var from_node_id: String = params.get("from_node_id", "")
 	var to_node_id: String = params.get("to_node_id", "")
-	var from_err: String = _validate_node_id(from_node_id)
+	var from_err: String = Validation.validate_node_id(from_node_id)
 	if not from_err.is_empty():
 		return _error("from_node_id: " + from_err)
-	var to_err: String = _validate_node_id(to_node_id)
+	var to_err: String = Validation.validate_node_id(to_node_id)
 	if not to_err.is_empty():
 		return _error("to_node_id: " + to_err)
 
@@ -207,10 +201,10 @@ func connect_nodes(params: Dictionary) -> Dictionary:
 func disconnect_nodes(params: Dictionary) -> Dictionary:
 	var from_node_id: String = params.get("from_node_id", "")
 	var to_node_id: String = params.get("to_node_id", "")
-	var from_err: String = _validate_node_id(from_node_id)
+	var from_err: String = Validation.validate_node_id(from_node_id)
 	if not from_err.is_empty():
 		return _error("from_node_id: " + from_err)
-	var to_err: String = _validate_node_id(to_node_id)
+	var to_err: String = Validation.validate_node_id(to_node_id)
 	if not to_err.is_empty():
 		return _error("to_node_id: " + to_err)
 
