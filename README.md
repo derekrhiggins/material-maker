@@ -48,6 +48,15 @@ Translation files can be installed using the **Install** button in the **Prefere
 
 - [Chinese translation](https://raw.githubusercontent.com/RodZill4/material-maker/f1be50b21a0f4991ac39e12a5362f5c5eb4c83a0/material_maker/locale/translations/zh.csv) (Created by **free_king**)
 
+## MCP Integration (AI-Driven Material Creation)
+
+This fork includes an MCP (Model Context Protocol) integration that lets AI assistants like Claude create and manipulate materials through natural language. It consists of:
+
+- **GDScript addon** (`addons/material_maker_mcp/`) — TCP server that runs inside MM, exposing the node graph API
+- **Python MCP server** (`mcp_server/`) — bridges MCP clients to the addon over TCP
+
+See [`mcp_server/README.md`](mcp_server/README.md) for setup instructions and [`mcp_server/TOOLS.md`](mcp_server/TOOLS.md) for the full tool reference.
+
 ## Community
 
 - **[Discord server](https://discord.gg/PF5V3mFwFM)**
