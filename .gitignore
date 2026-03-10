@@ -19,6 +19,15 @@ _build/
 addons/material_maker/examples/*.ptex.import
 addons/material_maker/library/base/*.png.import
 
+# Python (MCP server)
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
 # Export
 build/
 *.mmcr
