@@ -60,6 +60,7 @@ var _graph_commands: RefCounted = null
 var _parameter_commands: RefCounted = null
 var _export_commands: RefCounted = null
 var _utils_commands: RefCounted = null
+var _preview_commands: RefCounted = null
 
 # ---------------------------------------------------------------------------
 # Lifecycle
@@ -105,6 +106,8 @@ func _ready() -> void:
 	_export_commands.init(main_window)
 	_utils_commands = preload("res://addons/material_maker_mcp/commands/utils.gd").new()
 	_utils_commands.init(main_window)
+	_preview_commands = preload("res://addons/material_maker_mcp/commands/preview.gd").new()
+	_preview_commands.init(main_window)
 
 	_server = TCPServer.new()
 
@@ -320,6 +323,12 @@ func _handle_command(peer: StreamPeerTCP, command: Dictionary) -> void:
 		"list_export_profiles":
 			_dispatch(peer, _export_commands.list_export_profiles(params), request_id)
 
+		# ----- Preview / visual feedback -----
+		"get_preview_image":
+			await _dispatch_async(peer, _preview_commands.get_preview_image(params), request_id)
+		"get_3d_preview":
+			await _dispatch_async(peer, _preview_commands.get_3d_preview(params), request_id)
+
 		# ----- Utility / escape hatch -----
 		"execute_mm_script":
 			_dispatch(peer, _utils_commands.execute_mm_script(params), request_id)
@@ -343,6 +352,7 @@ func _handle_command(peer: StreamPeerTCP, command: Dictionary) -> void:
 					"get_graph_info", "list_available_nodes",
 					"get_node_parameters", "set_node_parameter", "set_multiple_parameters",
 					"export_material", "export_for_engine", "list_export_profiles",
+					"get_preview_image", "get_3d_preview",
 					"execute_mm_script",
 				],
 			}, request_id)
